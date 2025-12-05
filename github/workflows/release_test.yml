@@ -1,0 +1,144 @@
+# This workflow automates CMake build testing for all folders with CMakeLists.txt
+name: CMake Build Test and Release .elf files
+
+on:
+  # Triggers the workflow on push to 'main' branch (adjust branch as needed)
+  # push:
+  #   branches:
+  #     - main
+  # Triggers the workflow on manual dispatch (as before)
+  workflow_dispatch:
+
+env:
+  BUILD_TYPE: Debug  # Customize the CMake build type (Release, Debug, etc.)
+  RELEASE_TAG: v${{ github.run_number }} # Define a simple tag for the release
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    # Set an output for the job to indicate if a build was successful and what files were created
+    outputs:
+      build_success: ${{ steps.build-and-find.outputs.build_success }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Verify Folders with CMakeLists.txt
+        id: verify-folders
+        run: |
+          # The original find command will also find CMakeLists.txt in the root, which can cause issues with the loop later.
+          # Let's adjust the folder finding logic to better reflect the structure.
+          # Assuming projects are in top-level subdirectories.
+          FOLDERS=$(find . -maxdepth 2 -type f -name "CMakeLists.txt" | grep -v '^\./CMakeLists.txt$' | xargs -n1 dirname)
+          if [[ -z "$FOLDERS" ]]; then
+            echo "::set-output name=has_projects::false"
+            echo "Error: No project folders with CMakeLists.txt found in subdirectories!"
+            exit 1
+          fi
+          echo "::set-output name=has_projects::true"
+          echo "Valid project folders found:"
+          echo "$FOLDERS"
+        shell: bash
+              
+      - name: Install arm-none-eabi-gcc GNU Arm Embedded Toolchain
+        uses: carlosperate/arm-none-eabi-gcc-action@main
+        
+      - name: Install Ninja
+        uses: seanmiddleditch/gha-setup-ninja@master
+
+      - name: Check Tool Versions
+        run: |
+          echo "::group::Checking tool versions"
+          arm-none-eabi-gcc --version
+          ninja --version
+          echo "::endgroup::"
+
+      - name: Find All Folders, Configure and Build CMake Projects
+        id: build-and-find
+        if: steps.verify-folders.outputs.has_projects == 'true'
+        run: |
+          BUILT_ELF_FILES=""
+          BUILD_SUCCEEDED=0 # 0 for false, 1 for true
+          for dir in */ ; do
+            dir=${dir%/}  # Remove trailing slash
+            echo "::group::Processing folder: $dir"
+            
+            PROJECT_PATH="$GITHUB_WORKSPACE/$dir"
+            BUILD_PATH="$PROJECT_PATH/build"
+            
+            if [ -f "$PROJECT_PATH/CMakeLists.txt" ]; then              
+              # Configure
+              cmake -B "$BUILD_PATH" -S "$PROJECT_PATH" -DCMAKE_BUILD_TYPE="${{ env.BUILD_TYPE }}"
+              # Build
+              if cmake --build "$BUILD_PATH" --config "${{ env.BUILD_TYPE }}" ; then
+                echo "Build for $dir SUCCEEDED."
+                BUILD_SUCCEEDED=1
+                
+                # Find the generated .elf file (assuming one per project)
+                ELF_FILE=$(find "$BUILD_PATH" -type f -name "*.elf" -print -quit)
+                
+                if [ -n "$ELF_FILE" ]; then
+                  # Move the ELF file to a central artifact staging directory
+                  STAGING_DIR="$GITHUB_WORKSPACE/elf-artifacts"
+                  mkdir -p "$STAGING_DIR"
+                  ELF_BASENAME=$(basename "$ELF_FILE")
+                  TARGET_NAME="${dir}-${ELF_BASENAME}"
+                  cp "$ELF_FILE" "$STAGING_DIR/$TARGET_NAME"
+                  echo "Staged $TARGET_NAME"
+                  BUILT_ELF_FILES="$BUILT_ELF_FILES $TARGET_NAME"
+                else
+                  echo "Warning: No .elf file found in $BUILD_PATH for $dir"
+                fi
+              else
+                echo "Build for $dir FAILED."
+              fi
+            else
+              echo "Skipping $dir (No CMakeLists.txt)"
+            fi
+            echo "::endgroup::"
+          done
+          
+          if [ $BUILD_SUCCEEDED -eq 1 ]; then
+            echo "::set-output name=build_success::true"
+          else
+            echo "::set-output name=build_success::false"
+            # Optional: exit 1 if no build succeeded and you want to fail the workflow
+            # exit 1 
+          fi
+
+      - name: Upload .elf Artifacts
+        if: steps.build-and-find.outputs.build_success == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: elf-build-artifacts
+          path: elf-artifacts/
+          retention-days: 1 # You can set this higher if needed
+  release:
+    name: Create GitHub Release
+    # Run only if the build job succeeded and a build was actually done
+    needs: build
+    if: needs.build.outputs.build_success == 'true' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download .elf Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: elf-build-artifacts
+          # The path where the artifacts were uploaded (elf-artifacts) is now the current directory
+          path: ./
+
+      - name: Create Release and Upload .elf Files
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          name: Release ${{ env.RELEASE_TAG }} - ${{ env.BUILD_TYPE }} Build
+          body: |
+            Automated release from successful ${{ env.BUILD_TYPE }} build.
+            
+            Built files for:
+            ${{ steps.build-and-find.outputs.built_files }} # This output is not strictly needed but could be added to the build job if you want a detailed list.
+          files: |
+            ./*.elf # Upload all .elf files downloaded in the previous step
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # Required for creating the release

@@ -1,0 +1,201 @@
+[
+    {
+        "id": "edb0b44350766c10",
+        "type": "tab",
+        "label": "InfluxDB_Test",
+        "disabled": false,
+        "info": "",
+        "env": []
+    },
+    {
+        "id": "377ec82493744991",
+        "type": "influxdb out",
+        "z": "edb0b44350766c10",
+        "influxdb": "442385ef8c3e2de0",
+        "name": "",
+        "measurement": "test",
+        "precision": "",
+        "retentionPolicy": "",
+        "database": "database",
+        "precisionV18FluxV20": "ms",
+        "retentionPolicyV18Flux": "",
+        "org": "ELT73A-LAB08",
+        "bucket": "Grupo-X",
+        "x": 870,
+        "y": 100,
+        "wires": []
+    },
+    {
+        "id": "b181da9f896a7ee1",
+        "type": "inject",
+        "z": "edb0b44350766c10",
+        "name": "",
+        "props": [
+            {
+                "p": "payload"
+            },
+            {
+                "p": "topic",
+                "vt": "str"
+            }
+        ],
+        "repeat": "",
+        "crontab": "",
+        "once": false,
+        "onceDelay": 0.1,
+        "topic": "",
+        "payload": "",
+        "payloadType": "date",
+        "x": 360,
+        "y": 100,
+        "wires": [
+            [
+                "3ea63bc07e094e29"
+            ]
+        ]
+    },
+    {
+        "id": "3ea63bc07e094e29",
+        "type": "function",
+        "z": "edb0b44350766c10",
+        "name": "function 1",
+        "func": "let adc1Value = Math.floor(Math.random()*4096); \nlet adc2Value = Math.floor(Math.random()*4096); \n\nmsg.topic = \"InfluxData\"\nmsg.payload = {\n    \"adc1in1\": adc1Value,\n    \"voltage1\": (adc1Value * 3.3) / 4095,\n    \"adc1in2\": adc2Value,\n    \"voltage2\": (adc2Value * 3.3) / 4095,\n    \"blueled\": Math.round(Math.random())\n}\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 640,
+        "y": 100,
+        "wires": [
+            [
+                "ce3fa505fcceb23c",
+                "377ec82493744991"
+            ]
+        ]
+    },
+    {
+        "id": "ce3fa505fcceb23c",
+        "type": "debug",
+        "z": "edb0b44350766c10",
+        "name": "debug 3",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "false",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 880,
+        "y": 40,
+        "wires": []
+    },
+    {
+        "id": "4396ae79f0342adf",
+        "type": "influxdb in",
+        "z": "edb0b44350766c10",
+        "influxdb": "442385ef8c3e2de0",
+        "name": "",
+        "query": "from(bucket: \"Grupo-X\")\n  |> range(start: -1h)\n  |> filter(fn: (r) => r[\"_measurement\"] == \"test\")\n  |> filter(fn: (r) => r[\"_field\"] == \"adc1in1\" or r[\"_field\"] == \"adc1in2\" or r[\"_field\"] == \"blueled\" or r[\"_field\"] == \"voltage1\" or r[\"_field\"] == \"voltage2\")\n  |> last()",
+        "rawOutput": false,
+        "precision": "",
+        "retentionPolicy": "",
+        "org": "ELT73A-LAB08",
+        "x": 570,
+        "y": 200,
+        "wires": [
+            [
+                "f5f3d74cb4ca6495"
+            ]
+        ]
+    },
+    {
+        "id": "2ebb254bb94a8800",
+        "type": "inject",
+        "z": "edb0b44350766c10",
+        "name": "",
+        "props": [
+            {
+                "p": "payload"
+            },
+            {
+                "p": "topic",
+                "vt": "str"
+            }
+        ],
+        "repeat": "",
+        "crontab": "",
+        "once": false,
+        "onceDelay": 0.1,
+        "topic": "",
+        "payload": "",
+        "payloadType": "date",
+        "x": 360,
+        "y": 200,
+        "wires": [
+            [
+                "4396ae79f0342adf"
+            ]
+        ]
+    },
+    {
+        "id": "f5f3d74cb4ca6495",
+        "type": "function",
+        "z": "edb0b44350766c10",
+        "name": "function 2",
+        "func": "let adc1Value = msg.payload[0]._value;\nlet adc2Value = msg.payload[1]._value;\nlet led = msg.payload[2]._value;\nlet vol1 = msg.payload[3]._value;\nlet vol2 = msg.payload[4]._value;\n\nmsg.topic = \"InfluxData\"\nmsg.payload = {\n    \"adc1in1\": adc1Value,\n    \"voltage1\": vol1,\n    \"adc1in2\": adc2Value,\n    \"voltage2\": vol2,\n    \"blueled\": led\n}\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 740,
+        "y": 200,
+        "wires": [
+            [
+                "a05fe603dfe0dc64"
+            ]
+        ]
+    },
+    {
+        "id": "a05fe603dfe0dc64",
+        "type": "debug",
+        "z": "edb0b44350766c10",
+        "name": "debug 6",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "false",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 920,
+        "y": 200,
+        "wires": []
+    },
+    {
+        "id": "442385ef8c3e2de0",
+        "type": "influxdb",
+        "hostname": "127.0.0.1",
+        "port": 8086,
+        "protocol": "http",
+        "database": "database",
+        "name": "LAB08",
+        "usetls": false,
+        "tls": "",
+        "influxdbVersion": "2.0",
+        "url": "https://influxdb.adrianoruseler.com",
+        "timeout": 10,
+        "rejectUnauthorized": true
+    },
+    {
+        "id": "08f19ff865fec494",
+        "type": "global-config",
+        "env": [],
+        "modules": {
+            "node-red-contrib-influxdb": "0.7.0"
+        }
+    }
+]
